@@ -29,9 +29,17 @@ class _ConfigsPageState extends State<ConfigsPage> {
   Future<void> _loadConfigs() async {
     final prefs = await SharedPreferences.getInstance();
     final configsString = prefs.getStringList(_configsKey) ?? [];
-    setState(() {
-      _configs = configsString.map((c) => Config.fromJson(c)).toList();
-    });
+    if (configsString.isEmpty) {
+      final newConfig = Config(endpoint: '', projectId: '', devKey: '');
+      setState(() {
+        _configs = [newConfig];
+      });
+      await _saveConfigs();
+    } else {
+      setState(() {
+        _configs = configsString.map((c) => Config.fromJson(c)).toList();
+      });
+    }
   }
 
   Future<void> _saveConfigs() async {
