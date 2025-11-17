@@ -40,8 +40,8 @@ class _TablePageState extends State<TablePage> {
     if (widget.databaseId == null || widget.tableId == null) {
       _tableFuture = Future.value(_emptyTable());
       _rowsFuture = Future.value(_emptyRowList());
-      _combinedFuture =
-          Future.wait([_tableFuture!, _rowsFuture!]); // Initialize combined future
+      _combinedFuture = Future.wait(
+          [_tableFuture!, _rowsFuture!]); // Initialize combined future
     } else {
       _loadTableAndRows();
     }
@@ -149,8 +149,8 @@ class _TablePageState extends State<TablePage> {
       setState(() {
         _tableFuture = Future.value(_emptyTable());
         _rowsFuture = Future.value(_emptyRowList());
-        _combinedFuture =
-            Future.wait([_tableFuture!, _rowsFuture!]); // Initialize combined future
+        _combinedFuture = Future.wait(
+            [_tableFuture!, _rowsFuture!]); // Initialize combined future
       });
       return;
     }
@@ -181,8 +181,8 @@ class _TablePageState extends State<TablePage> {
     if (widget.databaseId == null || widget.tableId == null) {
       setState(() {
         _rowsFuture = Future.value(_emptyRowList());
-        _combinedFuture =
-            Future.wait([_tableFuture!, _rowsFuture!]); // Update combined future
+        _combinedFuture = Future.wait(
+            [_tableFuture!, _rowsFuture!]); // Update combined future
       });
       return;
     }
@@ -602,7 +602,8 @@ class _TablePageState extends State<TablePage> {
                   itemBuilder: (context, index) {
                     final row = rows[index];
                     final List<Map<String, dynamic>> allColumns = [
-                      ...table.columns.map((col) => col as Map<String, dynamic>),
+                      ...table.columns
+                          .map((col) => col as Map<String, dynamic>),
                       {'\$id': '\$id', 'type': 'string'},
                       {'\$id': '\$createdAt', 'type': 'string'},
                       {'\$id': '\$updatedAt', 'type': 'string'},
@@ -633,7 +634,8 @@ class _TablePageState extends State<TablePage> {
                           }
                         : null,
                   ),
-                  Text('Page ${(_offset / _limit).floor() + 1} of ${(rowList.total / _limit).ceil()}'),
+                  Text(
+                      'Page ${(_offset / _limit).floor() + 1} of ${(rowList.total / _limit).ceil()}'),
                   IconButton(
                     icon: const Icon(Icons.arrow_forward),
                     onPressed: _offset + _limit < rowList.total

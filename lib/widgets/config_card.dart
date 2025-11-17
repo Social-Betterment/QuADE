@@ -64,11 +64,12 @@ class _ConfigCardState extends State<ConfigCard> {
                   icon: const Icon(Icons.delete),
                   onPressed: widget.onDelete,
                 ),
-                const Text('Warning: Delete your configuration after use\nif you are not on a trusted device.',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 12,
-                )),
+                const Text(
+                    'Warning: Delete your configuration after use\nif you are not on a trusted device.',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontSize: 12,
+                    )),
                 const Spacer(),
                 ElevatedButton(
                   onPressed: () {

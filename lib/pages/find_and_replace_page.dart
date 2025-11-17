@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:quade/main.dart';
 import 'package:dart_appwrite/dart_appwrite.dart';
 import 'package:dart_appwrite/models.dart' as models;
-import 'package:quade/widgets/row_widget.dart';
+import 'package:quade/widgets/readonly_row_widget.dart';
 
 class FindAndReplacePage extends StatefulWidget {
   const FindAndReplacePage({
@@ -38,12 +38,13 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
   Future<List<models.Row>>? _rowsFuture;
   List<models.Row> _rows = [];
   Future<models.Table>? _tableFuture;
+  final Map<String, int> _maxColumnWidths = {};
 
   @override
   void initState() {
     super.initState();
     _tableFuture = _fetchTable();
-    _rowsFuture = _fetchRows();
+    _rowsFuture = _tableFuture!.then((table) => _fetchRows(table));
   }
 
   Future<models.Table> _fetchTable() async {
@@ -55,7 +56,40 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
     );
   }
 
-  Future<List<models.Row>> _fetchRows() async {
+  void _calculateMaxWidths(List<models.Row> rows, models.Table table) {
+    final allColumnKeys = [
+      ...table.columns.map((c) => (c as Map)['key'] as String),
+      '\$id',
+      '\$createdAt',
+      '\$updatedAt'
+    ];
+
+    for (var key in allColumnKeys) {
+      final labelLength = key.length;
+      _maxColumnWidths[key] = labelLength;
+    }
+
+    for (var row in rows) {
+      final allFields = {
+        ...row.data,
+        '\$id': row.$id,
+        '\$createdAt': row.$createdAt,
+        '\$updatedAt': row.$updatedAt,
+      };
+
+      for (var entry in allFields.entries) {
+        final key = entry.key;
+        if (_maxColumnWidths.containsKey(key)) {
+          final valueLength = entry.value?.toString().length ?? 0;
+          if (valueLength > (_maxColumnWidths[key]!)) {
+            _maxColumnWidths[key] = valueLength;
+          }
+        }
+      }
+    }
+  }
+
+  Future<List<models.Row>> _fetchRows(models.Table table) async {
     final appwriteNotifier =
         Provider.of<AppwriteNotifier>(context, listen: false);
     List<models.Row> allRows = [];
@@ -88,14 +122,16 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
       );
       allRows.addAll(rowList.rows);
     }
+    final filteredRows = allRows
+        .where((row) =>
+            row.data[widget.field!] != null &&
+            row.data[widget.field!].toString().contains(widget.find!))
+        .toList();
+
+    _calculateMaxWidths(filteredRows, table);
+
     setState(() {
-      _rows = allRows
-          .where((row) =>
-              row.data[widget.field!] != null &&
-              row.data[widget.field!]
-                  .toString()
-                  .contains(widget.find!))
-          .toList();
+      _rows = filteredRows;
     });
     return _rows;
   }
@@ -185,18 +221,21 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
             return const Center(child: Text('No matching rows found.'));
           }
 
+          final allColumns = [
+            ...table.columns,
+            {'\$id': '\$id', 'key': '\$id', 'type': 'string'},
+            {'\$id': '\$createdAt', 'key': '\$createdAt', 'type': 'string'},
+            {'\$id': '\$updatedAt', 'key': '\$updatedAt', 'type': 'string'},
+          ];
+
           return ListView.builder(
             itemCount: _rows.length,
             itemBuilder: (context, index) {
               final row = _rows[index];
-              return RowWidget(
+              return ReadOnlyRowWidget(
                 row: row,
-                columns: table.columns,
-                onUpdate: (rowId, data) {
-                  // Not used in this page
-                },
-                onDelete: (rowId) {}, // Added to satisfy the required argument
-                maxColumnWidths: const {},
+                columns: allColumns,
+                maxColumnWidths: _maxColumnWidths,
                 highlightedField: widget.field,
                 highlightedFind: widget.find,
                 highlightedValue: widget.replace,
@@ -263,7 +302,8 @@ class _TransactionDialogState extends State<TransactionDialog> {
       if (_isCancelled) throw Exception("Cancelled by user.");
       final operations = widget.rows.map((row) {
         final originalValue = row.data[widget.field]?.toString() ?? '';
-        final replacedValue = originalValue.replaceAll(widget.find, widget.replace);
+        final replacedValue =
+            originalValue.replaceAll(widget.find, widget.replace);
         final updatedData = {
           widget.field: replacedValue,
         };
@@ -291,7 +331,8 @@ class _TransactionDialogState extends State<TransactionDialog> {
         if (_isCancelled) throw Exception("Cancelled by user.");
         try {
           setState(() {
-            _status = "Committing transaction (Attempt ${attempt + 1}/$maxRetries)...";
+            _status =
+                "Committing transaction (Attempt ${attempt + 1}/$maxRetries)...";
           });
           await appwriteNotifier.updateTransaction(
             transactionId: _tx!.$id,
@@ -306,7 +347,8 @@ class _TransactionDialogState extends State<TransactionDialog> {
             }
             final waitMs = 500 * (1 << attempt); // 500ms, 1s, 2s, 4s
             setState(() {
-              _status = "Waiting for transaction... (Attempt ${attempt + 1}/$maxRetries)";
+              _status =
+                  "Waiting for transaction... (Attempt ${attempt + 1}/$maxRetries)";
             });
             await Future.delayed(Duration(milliseconds: waitMs));
           } else {
@@ -321,9 +363,9 @@ class _TransactionDialogState extends State<TransactionDialog> {
           _isFinished = true;
         });
       } else {
-        throw Exception("Transaction could not be committed after $maxRetries attempts.");
+        throw Exception(
+            "Transaction could not be committed after $maxRetries attempts.");
       }
-
     } catch (e) {
       if (_isCancelled) {
         if (_tx != null) {

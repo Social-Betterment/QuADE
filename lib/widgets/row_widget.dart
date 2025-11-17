@@ -233,8 +233,8 @@ class _RowWidgetState extends State<RowWidget> {
                   builder: (BuildContext context) {
                     return AlertDialog(
                       title: const Text('Confirm Delete'),
-                      content:
-                          const Text('Are you sure you want to delete this row?'),
+                      content: const Text(
+                          'Are you sure you want to delete this row?'),
                       actions: <Widget>[
                         TextButton(
                           child: const Text('Cancel'),
