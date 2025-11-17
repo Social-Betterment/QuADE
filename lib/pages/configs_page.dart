@@ -30,7 +30,7 @@ class _ConfigsPageState extends State<ConfigsPage> {
     final prefs = await SharedPreferences.getInstance();
     final configsString = prefs.getStringList(_configsKey) ?? [];
     if (configsString.isEmpty) {
-      final newConfig = Config(endpoint: 'https://fra.cloud.appwrite.io/v1', projectId: 'read-only-demo', devKey: 'standard_37124b86b01f1e4d9442ac9aff3a6163d8c2254597f052c0960933761b20a5f16bdcb3d17e56b0026e5d66c445ef2451f32d4d294f4c353bf7288800e89348fe686a5aa1a1645c0cc2b07f611b5728e744f539935bb1bcb30f28cfebc789bd41397cae4b484f22e709c3dae41fa28e5a827327707ede053935889b6ebfdc3e5b');
+      final newConfig = Config(endpoint: '', projectId: '', devKey: '');
       setState(() {
         _configs = [newConfig];
       });

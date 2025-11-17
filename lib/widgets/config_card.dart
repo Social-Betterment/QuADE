@@ -85,7 +85,7 @@ class _ConfigCardState extends State<ConfigCard> {
                 const SizedBox(width: 8),
                 ElevatedButton(
                   onPressed: () => widget.onLoad(widget.config),
-                  child: const Text('Load'),
+                  child: const Text('Use'),
                 ),
               ],
             ),
