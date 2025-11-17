@@ -8,6 +8,7 @@ This app is hosted at https://quade.appwrite.network
 
 Configurations are stored in the browser's Local Storage using the shared_preferences package. BE CAREFUL not to leave configurations on unsecured computers.
 You will need to create an API key from the project Overview > Integrations > API Keys . The shorter to expiration date the more safe it is.
+You only need to give row.read and row.write permissions.
 
 See PRD.md for detailed specifications.
 
