@@ -4,10 +4,11 @@ A Flutter app to quickly edit an Appwrite database with functions to delete, sea
 
 WARNING: This code has NOT been thoroughly tested. Use at your own risk. Make sure you have turned on daily backups of your database in Appwrite.
 
-This app is hosted at https://quade.vercel.app
+This app is hosted at https://quade.appwrite.network
 
 Configurations are stored in the browser's Local Storage using the shared_preferences package. BE CAREFUL not to leave configurations on unsecured computers.
 You will need to create an API key from the project Overview > Integrations > API Keys . The shorter to expiration date the more safe it is.
+You only need to give row.write permissions and read permission for the other Database permissions.
 
 See PRD.md for detailed specifications.
 
