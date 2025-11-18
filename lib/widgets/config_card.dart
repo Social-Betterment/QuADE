@@ -65,7 +65,7 @@ class _ConfigCardState extends State<ConfigCard> {
                   onPressed: widget.onDelete,
                 ),
                 const Text(
-                    'Warning: Delete your configuration after use\nif you are not on a trusted device.',
+                    'Warning: Delete your\nconfiguration after use if you\nare not on a trusted device.',
                     style: TextStyle(
                       color: Colors.red,
                       fontSize: 12,

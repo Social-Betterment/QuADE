@@ -104,20 +104,14 @@ class _ConfigsPageState extends State<ConfigsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text.rich(
-          TextSpan(
-            text: 'Quick Appwrite Database Explorer ',
-            children: [
-              TextSpan(
-                text: '(source code)',
-                style: const TextStyle(
-                  color: Colors.blue,
-                  decoration: TextDecoration.none,
-                ),
-                recognizer: TapGestureRecognizer()..onTap = _launchUrl,
-              ),
-            ],
-          ),
+        title: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 600) {
+              return const Text('QuADE');
+            } else {
+              return const Text('Quick Appwrite Database Explorer');
+            }
+          },
         ),
         leading: IconButton(
           icon: const Icon(Icons.key),
@@ -140,6 +134,31 @@ class _ConfigsPageState extends State<ConfigsPage> {
       floatingActionButton: FloatingActionButton(
         onPressed: _addConfig,
         child: const Icon(Icons.add),
+      ),
+      bottomNavigationBar: BottomAppBar(
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Text.rich(
+            TextSpan(
+              children: [
+                const TextSpan(
+                  text: 'Quick Appwrite Database Editor\n',
+                  style: TextStyle(fontSize: 14),
+                ),
+                TextSpan(
+                  text: 'github.com/Social-Betterment/QuADE',
+                  style: const TextStyle(
+                    color: Colors.blue,
+                    decoration: TextDecoration.none,
+                    fontSize: 14,
+                  ),
+                  recognizer: TapGestureRecognizer()..onTap = _launchUrl,
+                ),
+              ],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ),
       ),
     );
   }
