@@ -3,7 +3,7 @@
 ./bump_version.sh patch
 PUBSPEC_FILE="./pubspec.yaml"
 current_version_full=$(yq e '.version' "$PUBSPEC_FILE")
-flutter build web --base-href="/$current_version_full/" --release --wasm
+flutter build web --base-href="/$current_version_full/" --release
 export FOLDER=build/web
 export TARGET_FOLDER=dist/web
 VERSION=$(sed -n 's|.*"version":"\([^"]*\)".*|\1|p' "$FOLDER/version.json")

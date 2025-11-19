@@ -124,6 +124,7 @@ class _ConfigsPageState extends State<ConfigsPage> {
         itemCount: _configs.length,
         itemBuilder: (context, index) {
           return ConfigCard(
+            key: ObjectKey(_configs[index]),
             config: _configs[index],
             onSave: (config) => _updateConfig(index, config),
             onLoad: _loadClient,
