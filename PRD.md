@@ -98,7 +98,7 @@ We want a find and replace dialog. After the QBE button "Clear Sort/Filter" will
 It will let the user select from a dropdown list one of the fields of the current table. Then there will be a Find field for what text to find. Next, there will be a Replace field to specify what to replace the found text with.
 Then there is a sliding selector for All Instances on ("This Page" / "All Pages"). There will be a Cancel and "Review..." button.
 
-The Review... button will copy the current page's query to find the page of rows (according to the current pagination) or all rows in the current ListRows query, for a match for the Find value, it will navigate to a Find and Replace page (similar to TablePage) with all the rows matching and the Replaced text highlighted in green in the replacement field of all the rows.
+The Review... button will copy the current page's query to find the page of rows (according to the current pagination) or all rows in the current ListRows query, for a match for the Find value, it will navigate to a Find and Replace page (similar to TablePage) with all the rows matching and the Replaced text highlighted in green in the replacement field of all the rows. All the rows will be read-only - remove field editing, update row, and delete row.
 
 At the top of the Page, instead of Query by Example title & controls, it will have the appbar title "Find and Replace" and two buttons, "Write All to Database", and "Cancel".
 "Cancel" will go back to the previous TablePage. "Write All to Database" will then write all the changes to all the affected rows in a Transaction. The Transactions API is described in APPWRITE-TRANSACTIONS.md . It will display a circular progress indicator and the text "Transaction Running". It will end with text displaying "Transaction Complete" or "Transaction Cancelled". Do this in a modal dialog. Have a button to Cancel (or Close if the process is finished/failed). Disable the button if it is in a state that you can't stop.
@@ -112,3 +112,11 @@ Add meta fields $id $createdAt $updatedAt to the Query by Example and the row_wi
 ## STEP 10:
 
 On the top right of row_widget add a delete icon which when pressed with show a confirmation dialog. If confirmed it will call Delete Row.
+
+## STEP 11:
+
+On the right end of the QueryByExampleRow will be a red background button labelled "Mass Delete". The button will trigger a popup with the warning "Do you really want to DELETE multiple rows?", and "ALL the rows in the current query will be DELETED.". Then there will be a text entry box with the label "Type the total count of the rows". If the user types the number of total rows, as displayed on the pagination controls on TablePage, then a red "Delete" button will appear along with a "Cancel" button. If the entry box is empty or does not equal the total rows, then only a "Cancel" button will appear. The text entry box will start off empty.
+
+If the "Delete" button is pressed, then a Transaction will be created using with Delete Row calls for the row $id's in the current query. The Delete button will be disabled. A  circular progress indicator will be displayed and the text "Transaction Running". It will end with text displaying "Transaction Complete" or "Transaction Cancelled". Do this in a modal dialog. Have a button to Cancel (or Close if the process is finished/failed). Disable the button if it is in a state that you can't stop.
+
+Disable this Mass Delete feature in a feature flag in the code.

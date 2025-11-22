@@ -5,6 +5,7 @@ import 'package:quade/main.dart';
 import 'package:dart_appwrite/dart_appwrite.dart';
 import 'package:dart_appwrite/models.dart' as models;
 import 'package:quade/widgets/row_widget.dart';
+import 'package:quade/feature_flags.dart';
 import 'package:styled_text/styled_text.dart';
 
 class TablePage extends StatefulWidget {
@@ -475,6 +476,40 @@ class _TablePageState extends State<TablePage> {
     );
   }
 
+  void _showMassDeleteDialog(int totalRows) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return MassDeleteDialog(
+          totalRows: totalRows,
+          onConfirm: () {
+            _startMassDeleteTransaction();
+          },
+        );
+      },
+    );
+  }
+
+  void _startMassDeleteTransaction() {
+    final queries = _buildQueries();
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return MassDeleteTransactionDialog(
+          databaseId: widget.databaseId!,
+          tableId: widget.tableId!,
+          queries: queries,
+        );
+      },
+    ).then((success) {
+      if (success == true) {
+        _offset = 0;
+        _loadRows(); // Reload data on success
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -591,6 +626,18 @@ class _TablePageState extends State<TablePage> {
                           onPressed: _showFindAndReplaceDialog,
                           child: const Text('Find & Replace...'),
                         ),
+                        if (featureFlagMassDelete) ...[
+                          const SizedBox(width: 8),
+                          ElevatedButton(
+                            onPressed: rowList.total > 0
+                                ? () => _showMassDeleteDialog(rowList.total)
+                                : null,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red,
+                            ),
+                            child: const Text('Mass Delete'),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -657,6 +704,323 @@ class _TablePageState extends State<TablePage> {
           );
         },
       ),
+    );
+  }
+}
+
+class MassDeleteDialog extends StatefulWidget {
+  final int totalRows;
+  final VoidCallback onConfirm;
+
+  const MassDeleteDialog(
+      {super.key, required this.totalRows, required this.onConfirm});
+
+  @override
+  State<MassDeleteDialog> createState() => _MassDeleteDialogState();
+}
+
+class _MassDeleteDialogState extends State<MassDeleteDialog> {
+  final _controller = TextEditingController();
+  bool _canDelete = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.addListener(() {
+      final enteredValue = int.tryParse(_controller.text);
+      final canDelete = enteredValue == widget.totalRows;
+      if (canDelete != _canDelete) {
+        setState(() {
+          _canDelete = canDelete;
+        });
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Do you really want to DELETE multiple rows?'),
+      content: SingleChildScrollView(
+        child: ListBody(
+          children: <Widget>[
+            const Text('ALL the rows in the current query will be DELETED.'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              decoration: const InputDecoration(
+                labelText: 'Type the total count of the rows',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          child: const Text('Cancel'),
+          onPressed: () {
+            Navigator.of(context).pop();
+          },
+        ),
+        if (_canDelete)
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () {
+              Navigator.of(context).pop();
+              widget.onConfirm();
+            },
+            child: const Text('Delete'),
+          ),
+      ],
+    );
+  }
+}
+
+class MassDeleteTransactionDialog extends StatefulWidget {
+  final String databaseId;
+  final String tableId;
+  final List<String> queries;
+
+  const MassDeleteTransactionDialog({
+    super.key,
+    required this.databaseId,
+    required this.tableId,
+    required this.queries,
+  });
+
+  @override
+  State<MassDeleteTransactionDialog> createState() =>
+      _MassDeleteTransactionDialogState();
+}
+
+class _MassDeleteTransactionDialogState
+    extends State<MassDeleteTransactionDialog> {
+  String _status = "Preparing transaction...";
+  String? _error;
+  bool _isFinished = false;
+  bool _isCancelled = false;
+  models.Transaction? _tx;
+  bool _canCancel = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _runMassDeleteTransaction();
+  }
+
+  Future<List<models.Row>> _fetchAllRows() async {
+    if (!mounted) return [];
+    final appwriteNotifier =
+        Provider.of<AppwriteNotifier>(context, listen: false);
+    List<models.Row> allRows = [];
+    int offset = 0;
+    const limit = 100;
+
+    while (true) {
+      if (_isCancelled) break;
+      final rowList = await appwriteNotifier.listRows(
+        databaseId: widget.databaseId,
+        tableId: widget.tableId,
+        queries: [...widget.queries, Query.limit(limit), Query.offset(offset)],
+      );
+      allRows.addAll(rowList.rows);
+      if (!mounted) return [];
+      setState(() {
+        _status = "Fetched ${allRows.length} rows...";
+      });
+
+      if (rowList.rows.length < limit) {
+        break;
+      }
+      offset += limit;
+    }
+    return allRows;
+  }
+
+  Future<void> _runMassDeleteTransaction() async {
+    if (!mounted) return;
+    final appwriteNotifier =
+        Provider.of<AppwriteNotifier>(context, listen: false);
+
+    try {
+      // 1. Fetch ALL rows
+      setState(() {
+        _status = "Fetching all rows to be deleted...";
+      });
+      if (_isCancelled) throw Exception("Cancelled by user.");
+      final rowsToDelete = await _fetchAllRows();
+
+      if (rowsToDelete.isEmpty) {
+        if (!mounted) return;
+        setState(() {
+          _status = "No rows found to delete.";
+          _isFinished = true;
+        });
+        return;
+      }
+
+      // 2. Create transaction
+      if (!mounted) return;
+      setState(() {
+        _status = "Creating transaction...";
+      });
+      if (_isCancelled) throw Exception("Cancelled by user.");
+      _tx = await appwriteNotifier.createTransaction();
+
+      // 3. Stage delete operations
+      if (!mounted) return;
+      setState(() {
+        _status = "Staging ${rowsToDelete.length} deletions...";
+      });
+      if (_isCancelled) throw Exception("Cancelled by user.");
+      final operations = rowsToDelete
+          .map((row) => {
+                'action': 'delete',
+                'databaseId': widget.databaseId,
+                'tableId': widget.tableId,
+                'rowId': row.$id,
+              })
+          .toList();
+
+      const batchSize = 1000;
+      for (int i = 0; i < operations.length; i += batchSize) {
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        final batch = operations.sublist(
+            i,
+            i + batchSize > operations.length
+                ? operations.length
+                : i + batchSize);
+        await appwriteNotifier.createOperations(
+          transactionId: _tx!.$id,
+          operations: batch,
+        );
+        if (!mounted) return;
+        setState(() {
+          _status =
+              "Staged ${i + batch.length}/${rowsToDelete.length} deletions...";
+        });
+      }
+
+      // 4. Commit with retry
+      if (_isCancelled) throw Exception("Cancelled by user.");
+      setState(() {
+        _canCancel = false;
+      }); // Cannot cancel during commit phase
+      const maxRetries = 5;
+      bool committed = false;
+      for (int attempt = 0; attempt < maxRetries; attempt++) {
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        try {
+          if (!mounted) return;
+          setState(() {
+            _status =
+                "Committing transaction (Attempt ${attempt + 1}/$maxRetries)...";
+          });
+          await appwriteNotifier.updateTransaction(
+            transactionId: _tx!.$id,
+            commit: true,
+          );
+          committed = true;
+          break; // Success
+        } on AppwriteException catch (e) {
+          if (e.code == 400 && e.type == 'transaction_not_ready') {
+            if (attempt + 1 >= maxRetries) {
+              rethrow; // Max retries reached
+            }
+            final waitMs = 500 * (1 << attempt);
+            if (!mounted) return;
+            setState(() {
+              _status =
+                  "Waiting for transaction... (Attempt ${attempt + 1}/$maxRetries)";
+            });
+            await Future.delayed(Duration(milliseconds: waitMs));
+          } else {
+            rethrow;
+          }
+        }
+      }
+
+      if (committed) {
+        if (!mounted) return;
+        setState(() {
+          _status = "Transaction Complete";
+          _isFinished = true;
+        });
+      } else {
+        throw Exception(
+            "Transaction could not be committed after $maxRetries attempts.");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (_isCancelled) {
+        if (_tx != null) {
+          await appwriteNotifier.updateTransaction(
+              transactionId: _tx!.$id, rollback: true);
+        }
+        setState(() {
+          _status = "Transaction Cancelled.";
+          _error = null;
+        });
+      } else {
+        setState(() {
+          _status = "Transaction Failed!";
+          _error = e.toString();
+        });
+      }
+      setState(() {
+        _isFinished = true;
+      });
+    }
+  }
+
+  void _cancel() {
+    if (!_canCancel) return;
+    setState(() {
+      _isCancelled = true;
+      _status = "Cancelling...";
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Processing Mass Deletion'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!_isFinished) const CircularProgressIndicator(),
+          const SizedBox(height: 16),
+          Text(_status, textAlign: TextAlign.center),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: const TextStyle(color: Colors.red),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        ElevatedButton(
+          onPressed: () {
+            if (_isFinished) {
+              Navigator.of(context).pop(_status == "Transaction Complete");
+            } else {
+              _cancel();
+            }
+          },
+          child: Text(_isFinished ? 'Close' : 'Cancel'),
+        ),
+      ],
     );
   }
 }
