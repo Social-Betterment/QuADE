@@ -10,9 +10,6 @@ class RowWidget extends StatefulWidget {
     required this.onUpdate,
     required this.onDelete,
     required this.maxColumnWidths,
-    this.highlightedField,
-    this.highlightedFind,
-    this.highlightedValue,
   });
 
   final models.Row row;
@@ -20,9 +17,6 @@ class RowWidget extends StatefulWidget {
   final Function(String rowId, Map<String, dynamic> data) onUpdate;
   final Function(String rowId) onDelete;
   final Map<String, int> maxColumnWidths;
-  final String? highlightedField;
-  final String? highlightedFind;
-  final String? highlightedValue;
 
   @override
   State<RowWidget> createState() => _RowWidgetState();
@@ -36,31 +30,74 @@ class _RowWidgetState extends State<RowWidget> {
   @override
   void initState() {
     super.initState();
+    _initializeState();
+  }
+
+  @override
+  void didUpdateWidget(RowWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.row.$id != oldWidget.row.$id) {
+      _disposeControllers();
+      _initializeState();
+    } else {
+      // If the same row has been updated from the parent, update controllers
+      // for fields that are not being edited by the user.
+      _originalData = widget.row.data;
+      for (var column in widget.columns) {
+        final key = (column['\$id'] ?? column['key']) as String;
+        if (_controllers.containsKey(key) && !(_isEdited[key] ?? false)) {
+          String newValue;
+          if (key == '\$id') {
+            newValue = widget.row.$id;
+          } else if (key == '\$createdAt') {
+            newValue = widget.row.$createdAt;
+          } else if (key == '\$updatedAt') {
+            newValue = widget.row.$updatedAt;
+          } else {
+            newValue = _originalData[key]?.toString() ?? '';
+          }
+          _controllers[key]!.text = newValue;
+        }
+      }
+    }
+  }
+
+  void _initializeState() {
     _originalData = widget.row.data;
     _controllers = {};
     _isEdited = {};
 
-    // Initialize for meta fields
-    _controllers['\$id'] = TextEditingController(text: widget.row.$id);
-    _isEdited['\$id'] = false;
-    _controllers['\$createdAt'] =
-        TextEditingController(text: widget.row.$createdAt);
-    _isEdited['\$createdAt'] = false;
-    _controllers['\$updatedAt'] =
-        TextEditingController(text: widget.row.$updatedAt);
-    _isEdited['\$updatedAt'] = false;
-
-    // Initialize for data fields
-    for (var key in _originalData.keys) {
-      _controllers[key] =
-          TextEditingController(text: _originalData[key]?.toString() ?? '');
+    for (var column in widget.columns) {
+      final key = (column['\$id'] ?? column['key']) as String;
+      String fieldValue;
+      if (key == '\$id') {
+        fieldValue = widget.row.$id;
+      } else if (key == '\$createdAt') {
+        fieldValue = widget.row.$createdAt;
+      } else if (key == '\$updatedAt') {
+        fieldValue = widget.row.$updatedAt;
+      } else {
+        fieldValue = _originalData[key]?.toString() ?? '';
+      }
+      _controllers[key] = TextEditingController(text: fieldValue);
       _isEdited[key] = false;
     }
   }
 
+  void _disposeControllers() {
+    for (var controller in _controllers.values) {
+      controller.dispose();
+    }
+  }
+
+  @override
+  void dispose() {
+    _disposeControllers();
+    super.dispose();
+  }
+
   void _onFieldChanged(String key, String value) {
     setState(() {
-      // For meta fields, we don't allow editing, so _isEdited should always be false
       if (key == '\$id' || key == '\$createdAt' || key == '\$updatedAt') {
         _isEdited[key] = false;
       } else {
@@ -70,7 +107,6 @@ class _RowWidgetState extends State<RowWidget> {
   }
 
   void _updateField(String key) {
-    // Meta fields are not editable
     if (key == '\$id' || key == '\$createdAt' || key == '\$updatedAt') {
       return;
     }
@@ -85,8 +121,7 @@ class _RowWidgetState extends State<RowWidget> {
   void _updateAll() {
     final data = <String, dynamic>{};
     for (var key in _isEdited.keys) {
-      // Only update editable fields
-      if (_isEdited[key]! &&
+      if ((_isEdited[key] ?? false) &&
           !(key == '\$id' || key == '\$createdAt' || key == '\$updatedAt')) {
         data[key] = _getTypedValue(key, _controllers[key]!.text);
       }
@@ -103,12 +138,11 @@ class _RowWidgetState extends State<RowWidget> {
   }
 
   dynamic _getTypedValue(String key, String value) {
-    // Meta fields are always strings and not editable
     if (key == '\$id' || key == '\$createdAt' || key == '\$updatedAt') {
       return value;
     }
     final column = widget.columns.firstWhere((c) => (c as Map)['key'] == key,
-        orElse: () => throw Exception("Column not found"));
+        orElse: () => throw Exception("Column not found for key: $key"));
     switch ((column as Map)['type']) {
       case 'string':
         return value;
@@ -133,8 +167,7 @@ class _RowWidgetState extends State<RowWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final textStyle =
-        Theme.of(context).textTheme.titleMedium; // Or another appropriate style
+    final textStyle = Theme.of(context).textTheme.titleMedium;
     return Card(
       margin: const EdgeInsets.all(8.0),
       child: Stack(
@@ -145,53 +178,21 @@ class _RowWidgetState extends State<RowWidget> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Wrap(
-                  spacing: 16.0, // horizontal spacing
-                  runSpacing: 16.0, // vertical spacing
+                  spacing: 16.0,
+                  runSpacing: 16.0,
                   children: [
                     ...widget.columns.map((column) {
                       final key = (column['\$id'] ?? column['key']) as String;
                       final contentWidth =
                           (widget.maxColumnWidths[key] ?? 10) * 10.0;
                       final labelWidth = _calculateTextWidth(key, textStyle!);
-                      final width = math.max(contentWidth, labelWidth) +
-                          40; // + padding for icon and extra space
-                      final isHighlighted = widget.highlightedField == key;
-
-                      // Get value for meta fields or data fields
-                      String fieldValue;
-                      if (key == '\$id') {
-                        fieldValue = widget.row.$id;
-                      } else if (key == '\$createdAt') {
-                        fieldValue = widget.row.$createdAt;
-                      } else if (key == '\$updatedAt') {
-                        fieldValue = widget.row.$updatedAt;
-                      } else {
-                        fieldValue = _originalData[key]?.toString() ?? '';
-                      }
-
-                      if (!_controllers.containsKey(key)) {
-                        _controllers[key] =
-                            TextEditingController(text: fieldValue);
-                        _isEdited[key] = false;
-                      } else {
-                        _controllers[key]!.text = fieldValue;
-                      }
-
-                      if (isHighlighted &&
-                          widget.highlightedFind != null &&
-                          widget.highlightedValue != null) {
-                        _controllers[key]!.text = fieldValue.replaceAll(
-                            widget.highlightedFind!, widget.highlightedValue!);
-                      }
-
+                      final width = math.max(contentWidth, labelWidth) + 40;
                       final isMetaField = key == '\$id' ||
                           key == '\$createdAt' ||
                           key == '\$updatedAt';
 
                       return Container(
                         width: width,
-                        color:
-                            isHighlighted ? Colors.green.withAlpha(76) : null,
                         child: Row(
                           children: [
                             Expanded(
@@ -200,10 +201,10 @@ class _RowWidgetState extends State<RowWidget> {
                                 decoration: InputDecoration(labelText: key),
                                 onChanged: (value) =>
                                     _onFieldChanged(key, value),
-                                readOnly: isMetaField || isHighlighted,
+                                readOnly: isMetaField,
                               ),
                             ),
-                            if (_isEdited[key]!)
+                            if (_isEdited[key] ?? false)
                               IconButton(
                                 icon: const Icon(Icons.check),
                                 onPressed: () => _updateField(key),
@@ -212,7 +213,6 @@ class _RowWidgetState extends State<RowWidget> {
                         ),
                       );
                     }).toList(),
-                    // "Update All" button as the last child of Wrap
                     ElevatedButton(
                       onPressed: _updateAll,
                       child: const Text('Update Row'),

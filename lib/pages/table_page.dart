@@ -609,6 +609,7 @@ class _TablePageState extends State<TablePage> {
                       {'\$id': '\$updatedAt', 'type': 'string'},
                     ];
                     return RowWidget(
+                      key: ValueKey(row.$id),
                       row: row,
                       columns: allColumns,
                       onUpdate: _updateRow,
