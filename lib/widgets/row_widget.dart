@@ -191,7 +191,7 @@ class _RowWidgetState extends State<RowWidget> {
                           key == '\$createdAt' ||
                           key == '\$updatedAt';
 
-                      return Container(
+                      return SizedBox(
                         width: width,
                         child: Row(
                           children: [
