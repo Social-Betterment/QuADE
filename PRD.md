@@ -128,3 +128,5 @@ For @lib/models/config.dart and @lib/pages/configs_page.dart add a 'Plan' proper
 ## STEP 13:
 
 At the end of the config cards, add a note "Due to geographic, legal, and security settings, API keys might not across regions. In that case build your own QuADE from source. This server is in Frankfurt, Germany.". Make sure the text wraps on small screens.             
+
+Also add, "The sample API key is read-only and will not allow you to make any changes to the sample Appwrite instance."
