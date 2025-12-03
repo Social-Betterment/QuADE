@@ -23,6 +23,7 @@ class _ConfigCardState extends State<ConfigCard> {
   late final TextEditingController _endpointController;
   late final TextEditingController _projectIdController;
   late final TextEditingController _devKeyController;
+  late Plan _selectedPlan;
 
   @override
   void initState() {
@@ -30,6 +31,7 @@ class _ConfigCardState extends State<ConfigCard> {
     _endpointController = TextEditingController(text: widget.config.endpoint);
     _projectIdController = TextEditingController(text: widget.config.projectId);
     _devKeyController = TextEditingController(text: widget.config.devKey);
+    _selectedPlan = widget.config.plan;
   }
 
   @override
@@ -56,6 +58,24 @@ class _ConfigCardState extends State<ConfigCard> {
               decoration: const InputDecoration(labelText: 'API Key'),
               obscureText: true,
             ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<Plan>(
+              initialValue: _selectedPlan,
+              decoration: const InputDecoration(labelText: 'Plan'),
+              items: Plan.values.map((Plan plan) {
+                return DropdownMenuItem<Plan>(
+                  value: plan,
+                  child: Text(plan.description),
+                );
+              }).toList(),
+              onChanged: (Plan? newValue) {
+                if (newValue != null) {
+                  setState(() {
+                    _selectedPlan = newValue;
+                  });
+                }
+              },
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -77,6 +97,7 @@ class _ConfigCardState extends State<ConfigCard> {
                       endpoint: _endpointController.text,
                       projectId: _projectIdController.text,
                       devKey: _devKeyController.text,
+                      plan: _selectedPlan,
                     );
                     widget.onSave(newConfig);
                   },

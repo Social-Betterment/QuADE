@@ -47,10 +47,12 @@ class TableState {
 
 class AppwriteNotifier extends ChangeNotifier {
   Client? _client;
+  Config? _config;
   TablesDB? _tablesDB;
   final Map<String, TableState> _tableStates = {};
 
   Client? get client => _client;
+  Config? get config => _config;
   TablesDB? get tablesDB => _tablesDB;
 
   TableState getTableState(String databaseId, String tableId) {
@@ -67,6 +69,7 @@ class AppwriteNotifier extends ChangeNotifier {
   }
 
   void setClient(Config config) {
+    _config = config;
     _client = Client()
       ..setEndpoint(config.endpoint)
       ..setProject(config.projectId)

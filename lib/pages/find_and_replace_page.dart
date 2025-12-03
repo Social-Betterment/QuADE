@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:quade/main.dart';
 import 'package:dart_appwrite/dart_appwrite.dart';
 import 'package:dart_appwrite/models.dart' as models;
+import 'package:quade/models/config.dart';
 import 'package:quade/widgets/readonly_row_widget.dart';
 
 class FindAndReplacePage extends StatefulWidget {
@@ -275,7 +276,6 @@ class _TransactionDialogState extends State<TransactionDialog> {
   String? _error;
   bool _isFinished = false;
   bool _isCancelled = false;
-  models.Transaction? _tx;
 
   @override
   void initState() {
@@ -286,97 +286,129 @@ class _TransactionDialogState extends State<TransactionDialog> {
   Future<void> _runTransaction() async {
     final appwriteNotifier =
         Provider.of<AppwriteNotifier>(context, listen: false);
+    final config = appwriteNotifier.config!;
+    final plan = config.plan;
+
+    int getBatchSize(Plan plan) {
+      switch (plan) {
+        case Plan.free:
+          return 100;
+        case Plan.pro:
+          return 1000;
+        case Plan.scale:
+          return 2500;
+      }
+    }
+
+    final batchSize = getBatchSize(plan);
+    final numBatches = (widget.rows.length / batchSize).ceil();
+    models.Transaction? currentTx;
 
     try {
-      // 1. Create transaction
-      setState(() {
-        _status = "Creating transaction...";
-      });
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      _tx = await appwriteNotifier.createTransaction();
-
-      // 2. Stage operations
-      setState(() {
-        _status = "Staging changes...";
-      });
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      final operations = widget.rows.map((row) {
-        final originalValue = row.data[widget.field]?.toString() ?? '';
-        final replacedValue =
-            originalValue.replaceAll(widget.find, widget.replace);
-        final updatedData = {
-          widget.field: replacedValue,
-        };
-        return {
-          'action': 'update',
-          'databaseId': widget.databaseId,
-          'tableId': widget.tableId,
-          'rowId': row.$id,
-          'data': updatedData,
-        };
-      }).toList();
-
-      if (operations.isNotEmpty) {
-        await appwriteNotifier.createOperations(
-          transactionId: _tx!.$id,
-          operations: operations,
-        );
-      }
-
-      // 3. Commit with retry
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      const maxRetries = 5;
-      bool committed = false;
-      for (int attempt = 0; attempt < maxRetries; attempt++) {
+      for (int i = 0; i < numBatches; i++) {
         if (_isCancelled) throw Exception("Cancelled by user.");
-        try {
-          setState(() {
-            _status =
-                "Committing transaction (Attempt ${attempt + 1}/$maxRetries)...";
-          });
-          await appwriteNotifier.updateTransaction(
-            transactionId: _tx!.$id,
-            commit: true,
+
+        final batchRows =
+            widget.rows.skip(i * batchSize).take(batchSize).toList();
+
+        setState(() {
+          _status = "Processing batch ${i + 1} of $numBatches...";
+        });
+
+        // 1. Create transaction
+        setState(() {
+          _status = "Creating transaction for batch ${i + 1} of $numBatches...";
+        });
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        currentTx = await appwriteNotifier.createTransaction();
+
+        // 2. Stage operations
+        setState(() {
+          _status = "Staging changes for batch ${i + 1} of $numBatches...";
+        });
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        final operations = batchRows.map((row) {
+          final originalValue = row.data[widget.field]?.toString() ?? '';
+          final replacedValue =
+              originalValue.replaceAll(widget.find, widget.replace);
+          final updatedData = {
+            widget.field: replacedValue,
+          };
+          return {
+            'action': 'update',
+            'databaseId': widget.databaseId,
+            'tableId': widget.tableId,
+            'rowId': row.$id,
+            'data': updatedData,
+          };
+        }).toList();
+
+        if (operations.isNotEmpty) {
+          await appwriteNotifier.createOperations(
+            transactionId: currentTx.$id,
+            operations: operations,
           );
-          committed = true;
-          break; // Success
-        } on AppwriteException catch (e) {
-          if (e.code == 400 && e.type == 'transaction_not_ready') {
-            if (attempt + 1 >= maxRetries) {
-              rethrow; // Max retries reached
-            }
-            final waitMs = 500 * (1 << attempt); // 500ms, 1s, 2s, 4s
+        }
+
+        // 3. Commit with retry
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        const maxRetries = 5;
+        bool committed = false;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+          if (_isCancelled) throw Exception("Cancelled by user.");
+          try {
             setState(() {
               _status =
-                  "Waiting for transaction... (Attempt ${attempt + 1}/$maxRetries)";
+                  "Committing batch ${i + 1} (Attempt ${attempt + 1}/$maxRetries)...";
             });
-            await Future.delayed(Duration(milliseconds: waitMs));
-          } else {
-            rethrow; // Re-throw other Appwrite exceptions
+            await appwriteNotifier.updateTransaction(
+              transactionId: currentTx.$id,
+              commit: true,
+            );
+            committed = true;
+            break; // Success
+          } on AppwriteException catch (e) {
+            if (e.code == 400 && e.type == 'transaction_not_ready') {
+              if (attempt + 1 >= maxRetries) {
+                rethrow; // Max retries reached
+              }
+              final waitMs = 500 * (1 << attempt); // 500ms, 1s, 2s, 4s
+              setState(() {
+                _status =
+                    "Waiting for batch ${i + 1}... (Attempt ${attempt + 1}/$maxRetries)";
+              });
+              await Future.delayed(Duration(milliseconds: waitMs));
+            } else {
+              rethrow; // Re-throw other Appwrite exceptions
+            }
           }
+        }
+
+        if (!committed) {
+          throw Exception(
+              "Batch ${i + 1} could not be committed after $maxRetries attempts.");
         }
       }
 
-      if (committed) {
-        setState(() {
-          _status = "Transaction Complete!";
-          _isFinished = true;
-        });
-      } else {
-        throw Exception(
-            "Transaction could not be committed after $maxRetries attempts.");
-      }
+      setState(() {
+        _status = "All transactions complete!";
+        _isFinished = true;
+      });
     } catch (e) {
       if (_isCancelled) {
-        if (_tx != null) {
+        if (currentTx != null) {
           await appwriteNotifier.updateTransaction(
-              transactionId: _tx!.$id, rollback: true);
+              transactionId: currentTx.$id, rollback: true);
         }
         setState(() {
           _status = "Transaction Cancelled.";
           _error = null;
         });
       } else {
+        if (currentTx != null) {
+          await appwriteNotifier.updateTransaction(
+              transactionId: currentTx.$id, rollback: true);
+        }
         setState(() {
           _status = "Transaction Failed!";
           _error = e.toString();

@@ -120,3 +120,11 @@ On the right end of the QueryByExampleRow will be a red background button labell
 If the "Delete" button is pressed, then a Transaction will be created using with Delete Row calls for the row $id's in the current query. The Delete button will be disabled. A  circular progress indicator will be displayed and the text "Transaction Running". It will end with text displaying "Transaction Complete" or "Transaction Cancelled". Do this in a modal dialog. Have a button to Cancel (or Close if the process is finished/failed). Disable the button if it is in a state that you can't stop.
 
 Disable this Mass Delete feature in a feature flag in the code.
+
+## STEP 12:
+
+For @lib/models/config.dart and @lib/pages/configs_page.dart add a 'Plan' property with the following possible settings and descriptions "Free Plan: 100 operations per transaction, Pro Plan: 1000 operations per transaction, Scale Plan: 2500 operations per transaction". Adjust the transaction in @lib/pages/find_and_replace_page.dart to batch the transaction by the limit set by the plan (100, 1000, 2500). Apply the same batching technique to the mass delete transaction @lib/pages/table_page.dart
+
+## STEP 13:
+
+At the end of the config cards, add a note "Due to geographic, legal, and security settings, API keys might not across regions. In that case build your own QuADE from source. This server is in Frankfurt, Germany.". Make sure the text wraps on small screens.             

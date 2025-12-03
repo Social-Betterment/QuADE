@@ -1,3 +1,4 @@
+import 'package:quade/models/config.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -807,7 +808,6 @@ class _MassDeleteTransactionDialogState
   String? _error;
   bool _isFinished = false;
   bool _isCancelled = false;
-  models.Transaction? _tx;
   bool _canCancel = true;
 
   @override
@@ -849,6 +849,22 @@ class _MassDeleteTransactionDialogState
     if (!mounted) return;
     final appwriteNotifier =
         Provider.of<AppwriteNotifier>(context, listen: false);
+    final config = appwriteNotifier.config!;
+    final plan = config.plan;
+
+    int getBatchSize(Plan plan) {
+      switch (plan) {
+        case Plan.free:
+          return 100;
+        case Plan.pro:
+          return 1000;
+        case Plan.scale:
+          return 2500;
+      }
+    }
+
+    final batchSize = getBatchSize(plan);
+    models.Transaction? currentTx;
 
     try {
       // 1. Fetch ALL rows
@@ -867,109 +883,129 @@ class _MassDeleteTransactionDialogState
         return;
       }
 
-      // 2. Create transaction
-      if (!mounted) return;
-      setState(() {
-        _status = "Creating transaction...";
-      });
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      _tx = await appwriteNotifier.createTransaction();
+      final numBatches = (rowsToDelete.length / batchSize).ceil();
 
-      // 3. Stage delete operations
-      if (!mounted) return;
-      setState(() {
-        _status = "Staging ${rowsToDelete.length} deletions...";
-      });
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      final operations = rowsToDelete
-          .map((row) => {
-                'action': 'delete',
-                'databaseId': widget.databaseId,
-                'tableId': widget.tableId,
-                'rowId': row.$id,
-              })
-          .toList();
-
-      const batchSize = 1000;
-      for (int i = 0; i < operations.length; i += batchSize) {
+      for (int i = 0; i < numBatches; i++) {
         if (_isCancelled) throw Exception("Cancelled by user.");
-        final batch = operations.sublist(
-            i,
-            i + batchSize > operations.length
-                ? operations.length
-                : i + batchSize);
-        await appwriteNotifier.createOperations(
-          transactionId: _tx!.$id,
-          operations: batch,
-        );
+
+        final batchRows =
+            rowsToDelete.skip(i * batchSize).take(batchSize).toList();
+
+        setState(() {
+          _status = "Processing batch ${i + 1} of $numBatches...";
+        });
+
+        // Create transaction
+        setState(() {
+          _status = "Creating transaction for batch ${i + 1} of $numBatches...";
+        });
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        currentTx = await appwriteNotifier.createTransaction();
+
+        // Stage delete operations
         if (!mounted) return;
         setState(() {
           _status =
-              "Staged ${i + batch.length}/${rowsToDelete.length} deletions...";
+              "Staging ${batchRows.length} deletions for batch ${i + 1}...";
         });
-      }
-
-      // 4. Commit with retry
-      if (_isCancelled) throw Exception("Cancelled by user.");
-      setState(() {
-        _canCancel = false;
-      }); // Cannot cancel during commit phase
-      const maxRetries = 5;
-      bool committed = false;
-      for (int attempt = 0; attempt < maxRetries; attempt++) {
         if (_isCancelled) throw Exception("Cancelled by user.");
-        try {
+        final operations = batchRows
+            .map((row) => {
+                  'action': 'delete',
+                  'databaseId': widget.databaseId,
+                  'tableId': widget.tableId,
+                  'rowId': row.$id,
+                })
+            .toList();
+
+        const stagingBatchSize = 1000;
+        for (int j = 0; j < operations.length; j += stagingBatchSize) {
+          if (_isCancelled) throw Exception("Cancelled by user.");
+          final batch = operations.sublist(
+              j,
+              j + stagingBatchSize > operations.length
+                  ? operations.length
+                  : j + stagingBatchSize);
+          await appwriteNotifier.createOperations(
+            transactionId: currentTx.$id,
+            operations: batch,
+          );
           if (!mounted) return;
           setState(() {
             _status =
-                "Committing transaction (Attempt ${attempt + 1}/$maxRetries)...";
+                "Staged ${j + batch.length}/${operations.length} deletions for batch ${i + 1}...";
           });
-          await appwriteNotifier.updateTransaction(
-            transactionId: _tx!.$id,
-            commit: true,
-          );
-          committed = true;
-          break; // Success
-        } on AppwriteException catch (e) {
-          if (e.code == 400 && e.type == 'transaction_not_ready') {
-            if (attempt + 1 >= maxRetries) {
-              rethrow; // Max retries reached
-            }
-            final waitMs = 500 * (1 << attempt);
+        }
+
+        // Commit with retry
+        if (_isCancelled) throw Exception("Cancelled by user.");
+        setState(() {
+          _canCancel = false;
+        });
+        const maxRetries = 5;
+        bool committed = false;
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+          try {
             if (!mounted) return;
             setState(() {
               _status =
-                  "Waiting for transaction... (Attempt ${attempt + 1}/$maxRetries)";
+                  "Committing batch ${i + 1} (Attempt ${attempt + 1}/$maxRetries)...";
             });
-            await Future.delayed(Duration(milliseconds: waitMs));
-          } else {
-            rethrow;
+            await appwriteNotifier.updateTransaction(
+              transactionId: currentTx.$id,
+              commit: true,
+            );
+            committed = true;
+            break;
+          } on AppwriteException catch (e) {
+            if (e.code == 400 && e.type == 'transaction_not_ready') {
+              if (attempt + 1 >= maxRetries) {
+                rethrow;
+              }
+              final waitMs = 500 * (1 << attempt);
+              if (!mounted) return;
+              setState(() {
+                _status =
+                    "Waiting for batch ${i + 1}... (Attempt ${attempt + 1}/$maxRetries)";
+              });
+              await Future.delayed(Duration(milliseconds: waitMs));
+            } else {
+              rethrow;
+            }
           }
         }
+
+        if (!committed) {
+          throw Exception(
+              "Batch ${i + 1} could not be committed after $maxRetries attempts.");
+        }
+
+        setState(() {
+          _canCancel = true;
+        });
       }
 
-      if (committed) {
-        if (!mounted) return;
-        setState(() {
-          _status = "Transaction Complete";
-          _isFinished = true;
-        });
-      } else {
-        throw Exception(
-            "Transaction could not be committed after $maxRetries attempts.");
-      }
+      if (!mounted) return;
+      setState(() {
+        _status = "All transactions complete!";
+        _isFinished = true;
+      });
     } catch (e) {
       if (!mounted) return;
       if (_isCancelled) {
-        if (_tx != null) {
+        if (currentTx != null) {
           await appwriteNotifier.updateTransaction(
-              transactionId: _tx!.$id, rollback: true);
+              transactionId: currentTx.$id, rollback: true);
         }
         setState(() {
           _status = "Transaction Cancelled.";
           _error = null;
         });
       } else {
+        if (currentTx != null) {
+          await appwriteNotifier.updateTransaction(
+              transactionId: currentTx.$id, rollback: true);
+        }
         setState(() {
           _status = "Transaction Failed!";
           _error = e.toString();
@@ -1013,7 +1049,8 @@ class _MassDeleteTransactionDialogState
         ElevatedButton(
           onPressed: () {
             if (_isFinished) {
-              Navigator.of(context).pop(_status == "Transaction Complete");
+              Navigator.of(context)
+                  .pop(_status == "All transactions complete!");
             } else {
               _cancel();
             }

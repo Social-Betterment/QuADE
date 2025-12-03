@@ -30,7 +30,13 @@ class _ConfigsPageState extends State<ConfigsPage> {
     final prefs = await SharedPreferences.getInstance();
     final configsString = prefs.getStringList(_configsKey) ?? [];
     if (configsString.isEmpty) {
-      final newConfig = Config(endpoint: '', projectId: '', devKey: '');
+      final newConfig = Config(
+        endpoint: 'https://fra.cloud.appwrite.io/v1',
+        projectId: '691b86fb000e917fcd95',
+        devKey:
+            'standard_444cccd584807e000c345a33d87e518a268f255e00bfb2f2173ef2ea694cb762ccab33d4012d68bf51e2236440a57ad65e8e9cafa1989cb0e11695d29594b214e01b1a1ef0d85bd72569b55e4a1fdbb777c7f8f069f7f49dd9f2efc4f84482a73237f2365a9fd5cabe07555fa0e8bae3e3790d480f0698b2d2c072ae77f07178',
+        plan: Plan.free,
+      );
       setState(() {
         _configs = [newConfig];
       });
@@ -121,17 +127,29 @@ class _ConfigsPageState extends State<ConfigsPage> {
         ),
       ),
       body: ListView.builder(
-        itemCount: _configs.length,
+        itemCount: _configs.length + 1,
         itemBuilder: (context, index) {
-          return ConfigCard(
-            key: ObjectKey(_configs[index]),
-            config: _configs[index],
-            onSave: (config) => _updateConfig(index, config),
-            onLoad: _loadClient,
-            onDelete: () => _deleteConfig(index),
-          );
+          if (index < _configs.length) {
+            return ConfigCard(
+              key: ObjectKey(_configs[index]),
+              config: _configs[index],
+              onSave: (config) => _updateConfig(index, config),
+              onLoad: _loadClient,
+              onDelete: () => _deleteConfig(index),
+            );
+          } else {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(8.0, 16.0, 8.0, 80.0),
+              child: Text(
+                "Due to geographic, legal, and security settings, API keys might not work across regions. In that case, build your own QuADE from source. The public server is in Frankfurt, Germany.\n\nThe sample API key is READ-ONLY and will not allow you to make any changes to the sample Appwrite instance.",
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            );
+          }
         },
       ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
       floatingActionButton: FloatingActionButton(
         onPressed: _addConfig,
         child: const Icon(Icons.add),
