@@ -137,13 +137,16 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
     return _rows;
   }
 
-  void _showTransactionDialog() {
+  void _showTransactionDialog() async {
+    final table = await _tableFuture;
+    if (!mounted) return;
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing by clicking outside
       builder: (BuildContext context) {
         return TransactionDialog(
           rows: _rows,
+          table: table!,
           databaseId: widget.databaseId!,
           tableId: widget.tableId!,
           field: widget.field!,
@@ -251,6 +254,7 @@ class _FindAndReplacePageState extends State<FindAndReplacePage> {
 
 class TransactionDialog extends StatefulWidget {
   final List<models.Row> rows;
+  final models.Table table;
   final String databaseId;
   final String tableId;
   final String field;
@@ -260,6 +264,7 @@ class TransactionDialog extends StatefulWidget {
   const TransactionDialog({
     super.key,
     required this.rows,
+    required this.table,
     required this.databaseId,
     required this.tableId,
     required this.field,
@@ -331,8 +336,32 @@ class _TransactionDialogState extends State<TransactionDialog> {
           final originalValue = row.data[widget.field]?.toString() ?? '';
           final replacedValue =
               originalValue.replaceAll(widget.find, widget.replace);
+
+          // Get the column type to convert the replaced value properly
+          final column = widget.table.columns.firstWhere(
+            (c) => (c as Map)['key'] == widget.field,
+            orElse: () => {'type': 'string'},
+          ) as Map;
+          final columnType = column['type'] as String;
+
+          // Convert the replaced value to the proper type
+          dynamic typedValue;
+          switch (columnType) {
+            case 'boolean':
+              typedValue = replacedValue.toLowerCase() == 'true';
+              break;
+            case 'integer':
+              typedValue = int.tryParse(replacedValue) ?? 0;
+              break;
+            case 'double':
+              typedValue = double.tryParse(replacedValue) ?? 0.0;
+              break;
+            default:
+              typedValue = replacedValue;
+          }
+
           final updatedData = {
-            widget.field: replacedValue,
+            widget.field: typedValue,
           };
           return {
             'action': 'update',
